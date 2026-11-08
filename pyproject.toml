@@ -19,5 +19,6 @@ dependencies = [
     "sentence-transformers>=6.2.0",
     "uuid>=1.30",
     "uvicorn[standard]>=0.54.0",
+    "python-multipart>=0.0.9",
     "v>=1",
 ]

@@ -6,15 +6,21 @@ import os
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from filereader import read_pdf_text
+from pathlib import Path
+import shutil
 
 load_dotenv()
 
 MOCK = os.getenv("MOCK_AGENT") == "1"
+PDF_DIR = Path("pdfs")
 
 STEP_LABELS = {
     "search_documentation": "Searching documentation",
@@ -283,6 +289,45 @@ async def chat(req: ChatRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/api/files")
+async def list_pdfs():
+    if not PDF_DIR.exists():
+        return {"files": []}
+    files = [p.name for p in PDF_DIR.iterdir() if p.suffix.lower() == ".pdf"]
+    return {"files": sorted(files)}
+
+
+@app.post("/api/upload")
+async def upload_pdf(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        return JSONResponse({"error": "Only PDF files are allowed"}, status_code=400)
+
+    dest = PDF_DIR / file.filename
+    if dest.exists():
+        stem = dest.stem
+        suffix = dest.suffix
+        i = 1
+        while dest.exists():
+            dest = PDF_DIR / f"{stem}_{i}{suffix}"
+            i += 1
+
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    if not MOCK:
+        try:
+            text = read_pdf_text(str(dest))
+            doc = Document(page_content=text, metadata={"source": str(dest)})
+            splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=200)
+            splits = splitter.split_documents([doc])
+            vector_store.add_documents(documents=splits)
+            return {"ok": True, "filename": dest.name, "chunks": len(splits), "indexed": True}
+        except Exception as e:
+            return JSONResponse({"error": f"Saved but indexing failed: {e}"}, status_code=500)
+
+    return {"ok": True, "filename": dest.name, "indexed": False, "note": "Mock mode — indexing skipped"}
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

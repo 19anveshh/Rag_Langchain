@@ -221,6 +221,63 @@ body::before {
   transform: translateY(-1px);
 }
 
+/* ---------- uploads section ---------- */
+
+.uploads-section {
+  padding: 10px 14px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.upload-btn {
+  width: 100%;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.upload-status {
+  margin-top: 8px;
+  font-size: 11.5px;
+  min-height: 16px;
+}
+
+.upload-status.ok { color: #6ee7b7; }
+.upload-status.err { color: #fda4a4; }
+
+.upload-list {
+  margin-top: 8px;
+  font-size: 11.5px;
+}
+
+.upload-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  margin-top: 4px;
+}
+
+.upload-item .upload-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.upload-item .upload-remove {
+  background: none;
+  border: none;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.upload-item .upload-remove:hover { color: #fda4a4; }
+
 /* ---------- settings modal ---------- */
 
 .modal-overlay {
@@ -640,7 +697,7 @@ body::before {
   justify-content: center;
   text-align: center;
   padding: 32px 20px;
-  gap: 6px;
+  gap: 10px;
   animation: rise 0.3s ease;
 }
 
@@ -656,8 +713,20 @@ body::before {
   color: #c4b5fd;
 }
 
-.hero h1 { margin: 0; font-size: 26px; font-weight: 650; letter-spacing: -0.01em; }
-.hero p { margin: 0; color: var(--muted); font-size: 13.5px; max-width: 460px; }
+.hero h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.hero-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  max-width: 520px;
+}
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 18px; max-width: 640px; }
 

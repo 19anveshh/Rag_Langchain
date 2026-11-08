@@ -36,6 +36,10 @@
     cfgSave: document.getElementById("cfgSave"),
     cfgReset: document.getElementById("cfgReset"),
     cfgClose: document.getElementById("cfgClose"),
+    uploadBtn: document.getElementById("uploadBtn"),
+    fileInput: document.getElementById("fileInput"),
+    uploadStatus: document.getElementById("uploadStatus"),
+    uploadList: document.getElementById("uploadList"),
   };
 
   const SUGGESTIONS = [
@@ -189,6 +193,59 @@
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !els.settingsModal.hidden) closeSettings();
   });
+
+  /* ---------- upload ---------- */
+  els.uploadBtn.addEventListener("click", () => els.fileInput.click());
+  els.fileInput.addEventListener("change", async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    els.uploadStatus.textContent = "Uploading…";
+    els.uploadStatus.className = "upload-status";
+    const form = new FormData();
+    form.append("file", file);
+    try {
+      const res = await fetch("/api/upload", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        els.uploadStatus.textContent = data.error || "Upload failed.";
+        els.uploadStatus.className = "upload-status err";
+        return;
+      }
+      els.uploadStatus.textContent = data.indexed
+        ? `Uploaded "${data.filename}" — ${data.chunks} chunks indexed.`
+        : `Uploaded "${data.filename}" (${data.note}).`;
+      els.uploadStatus.className = "upload-status ok";
+      event.target.value = "";
+      renderUploadList();
+    } catch (err) {
+      els.uploadStatus.textContent = `Upload failed: ${err.message}`;
+      els.uploadStatus.className = "upload-status err";
+    }
+  });
+
+  async function renderUploadList() {
+    try {
+      const res = await fetch("/api/files");
+      const data = await res.json();
+      els.uploadList.innerHTML = "";
+      if (!data.files || data.files.length === 0) {
+        els.uploadList.textContent = "No PDFs indexed yet.";
+        els.uploadList.style.fontSize = "11.5px";
+        els.uploadList.style.color = "var(--faint)";
+        els.uploadList.style.padding = "4px 0";
+        return;
+      }
+      for (const name of data.files) {
+        const row = document.createElement("div");
+        row.className = "upload-item";
+        row.innerHTML = `<span class="upload-name"></span><button class="upload-remove" aria-label="Remove">&times;</button>`;
+        row.querySelector(".upload-name").textContent = name;
+        els.uploadList.appendChild(row);
+      }
+    } catch {
+      els.uploadList.textContent = "Could not load file list.";
+    }
+  }
 
   /* ---------- markdown ---------- */
 
@@ -482,17 +539,8 @@
     hero.innerHTML = `
       <div class="hero-badge">RAG Agent</div>
       <h1>Ask your documents</h1>
-      <p>Answers are grounded in the indexed PDFs &mdash; a documentation agent searches chunks, cross-checks them with analysts, then replies.</p>`;
-    const chips = document.createElement("div");
-    chips.className = "chips";
-    for (const s of SUGGESTIONS) {
-      const chip = document.createElement("button");
-      chip.className = "chip";
-      chip.textContent = s;
-      chip.addEventListener("click", () => send(s));
-      chips.appendChild(chip);
-    }
-    hero.appendChild(chips);
+      <p class="hero-sub">Upload your PDFs and get grounded answers with cited sources.</p>
+    `;
     els.messages.appendChild(hero);
   }
 
@@ -735,5 +783,6 @@
   renderThread(getThread(currentId));
   updateModelLabel();
   updateSendBtn();
+  renderUploadList();
   els.input.focus();
 })();
