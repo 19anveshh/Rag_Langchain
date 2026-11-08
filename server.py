@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import os
@@ -85,6 +87,29 @@ if not MOCK:
     )
 
 
+_agent_cache: dict = {}
+
+
+def get_agent(cfg: AgentConfig | None):
+    if cfg is None or not (cfg.apiKey or cfg.model or cfg.baseUrl or cfg.provider):
+        return agent
+    provider = cfg.provider or DEFAULT_PROVIDER
+    if provider not in PROVIDER_ENV:
+        raise ValueError(f"Unknown provider: {provider}")
+    cache_key = (provider, cfg.model or DEFAULT_MODEL, cfg.apiKey, cfg.baseUrl)
+    if cache_key not in _agent_cache:
+        from deepagents import create_deep_agent
+
+        _agent_cache[cache_key] = create_deep_agent(
+            model=build_model(cfg),
+            tools=[search_documentation],
+            backend=backend,
+            system_prompt=INSTRUCTIONS,
+            subagents=[chunk_analyst_subagent],
+        )
+    return _agent_cache[cache_key]
+
+
 def sse(obj: dict) -> str:
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
@@ -94,11 +119,48 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class AgentConfig(BaseModel):
+    provider: str | None = None
+    model: str | None = None
+    apiKey: str | None = None
+    baseUrl: str | None = None
+
+
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
+    config: AgentConfig | None = None
 
 
-async def run_agent(messages: list[ChatMessage]):
+DEFAULT_PROVIDER = "groq"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
+
+PROVIDER_ENV = {
+    "groq": "GROQ_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "google_genai": "GOOGLE_API_KEY",
+    "openai": "OPENAI_API_KEY",
+}
+
+
+def build_model(cfg: AgentConfig):
+    from langchain.chat_models import init_chat_model
+
+    provider = cfg.provider or DEFAULT_PROVIDER
+    model_name = cfg.model or DEFAULT_MODEL
+    env_name = PROVIDER_ENV[provider]
+    if cfg.apiKey:
+        os.environ[env_name] = cfg.apiKey
+    elif provider == "openai" and cfg.baseUrl:
+        # Local OpenAI-compatible servers ignore the key, but the client
+        # still requires one to be set.
+        os.environ[env_name] = "not-needed"
+    kwargs = {}
+    if provider == "openai" and cfg.baseUrl:
+        kwargs["base_url"] = cfg.baseUrl
+    return init_chat_model(model=model_name, model_provider=provider, **kwargs)
+
+
+async def run_agent(messages: list[ChatMessage], agent):
     lc_messages = [
         HumanMessage(content=m.content) if m.role == "user" else AIMessage(content=m.content)
         for m in messages
@@ -199,13 +261,23 @@ async def run_mock(messages: list[ChatMessage]):
 app = FastAPI()
 
 
+async def _error_gen(e: Exception):
+    yield sse({"type": "error", "message": f"{type(e).__name__}: {e}"})
+    yield sse({"type": "done"})
+
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     if MOCK:
         gen = run_mock(req.messages)
-        print("[mock] serving canned response")
+        print("[mock] serving canned response", flush=True)
     else:
-        gen = run_agent(req.messages)
+        try:
+            agent = get_agent(req.config)
+        except Exception as e:
+            gen = _error_gen(e)
+        else:
+            gen = run_agent(req.messages, agent)
     return StreamingResponse(
         gen,
         media_type="text/event-stream",

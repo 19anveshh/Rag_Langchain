@@ -3,8 +3,15 @@
 
   const STORE_KEY = "ragchat.threads.v1";
   const CURRENT_KEY = "ragchat.current";
+  const SETTINGS_KEY = "ragchat.settings";
   const MARKED_OK = typeof marked !== "undefined";
   const PURIFY_OK = typeof DOMPurify !== "undefined";
+  const PROVIDERS = {
+    groq: { label: "Groq", model: "openai/gpt-oss-120b" },
+    anthropic: { label: "Anthropic", model: "claude-sonnet-4-5" },
+    google_genai: { label: "Google Gemini", model: "gemini-2.5-flash" },
+    openai: { label: "OpenAI-compatible", model: "gpt-4o-mini" },
+  };
 
   const els = {
     sidebar: document.getElementById("sidebar"),
@@ -17,6 +24,18 @@
     messages: document.getElementById("messages"),
     input: document.getElementById("input"),
     sendBtn: document.getElementById("sendBtn"),
+    modelLabel: document.getElementById("modelLabel"),
+    settingsBtn: document.getElementById("settingsBtn"),
+    settingsModal: document.getElementById("settingsModal"),
+    cfgProvider: document.getElementById("cfgProvider"),
+    cfgModel: document.getElementById("cfgModel"),
+    cfgKey: document.getElementById("cfgKey"),
+    cfgBaseUrlField: document.getElementById("cfgBaseUrlField"),
+    cfgBaseUrl: document.getElementById("cfgBaseUrl"),
+    cfgStatus: document.getElementById("cfgStatus"),
+    cfgSave: document.getElementById("cfgSave"),
+    cfgReset: document.getElementById("cfgReset"),
+    cfgClose: document.getElementById("cfgClose"),
   };
 
   const SUGGESTIONS = [
@@ -26,10 +45,13 @@
   ];
 
   let threads = loadThreads();
+  let settings = loadSettings();
   let currentId = null;
   let streaming = false;
   let controller = null;
   let pacer = null;
+  let settingsCloseTimer = null;
+  let settingsReturnFocus = null;
   const turnText = new WeakMap();
 
   /* ---------- storage ---------- */
@@ -60,6 +82,113 @@
       else localStorage.removeItem(CURRENT_KEY);
     } catch {}
   }
+
+  /* ---------- provider settings ---------- */
+
+  function loadSettings() {
+    try {
+      const value = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+      if (!value || !PROVIDERS[value.provider]) return null;
+      return {
+        provider: value.provider,
+        model: String(value.model || PROVIDERS[value.provider].model),
+        apiKey: String(value.apiKey || ""),
+        baseUrl: String(value.baseUrl || ""),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function updateModelLabel() {
+    const provider = settings ? settings.provider : "groq";
+    const model = settings ? settings.model : PROVIDERS.groq.model;
+    const label = `${model} · ${PROVIDERS[provider].label}`;
+    els.modelLabel.textContent = label;
+    els.modelLabel.title = label;
+  }
+
+  function updateProviderFields() {
+    const provider = els.cfgProvider.value;
+    els.cfgModel.placeholder = PROVIDERS[provider].model;
+    els.cfgBaseUrlField.hidden = provider !== "openai";
+  }
+
+  function setSettingsStatus(text, kind = "") {
+    els.cfgStatus.textContent = text;
+    els.cfgStatus.className = `modal-status${kind ? ` ${kind}` : ""}`;
+  }
+
+  function fillSettingsForm() {
+    els.cfgProvider.value = settings ? settings.provider : "groq";
+    els.cfgModel.value = settings ? settings.model : "";
+    els.cfgKey.value = settings ? settings.apiKey : "";
+    els.cfgBaseUrl.value = settings ? settings.baseUrl : "";
+    setSettingsStatus("");
+    updateProviderFields();
+  }
+
+  function openSettings() {
+    if (settingsCloseTimer) clearTimeout(settingsCloseTimer);
+    settingsReturnFocus = document.activeElement;
+    fillSettingsForm();
+    closeMobileSidebar();
+    els.settingsModal.hidden = false;
+    requestAnimationFrame(() => {
+      els.settingsModal.classList.add("show");
+      els.cfgProvider.focus();
+    });
+  }
+
+  function closeSettings() {
+    els.settingsModal.classList.remove("show");
+    settingsCloseTimer = setTimeout(() => {
+      els.settingsModal.hidden = true;
+      settingsCloseTimer = null;
+      if (settingsReturnFocus) settingsReturnFocus.focus();
+    }, 220);
+  }
+
+  function saveSettings() {
+    const provider = els.cfgProvider.value;
+    const next = {
+      provider,
+      model: els.cfgModel.value.trim() || PROVIDERS[provider].model,
+      apiKey: els.cfgKey.value.trim(),
+      baseUrl: provider === "openai" ? els.cfgBaseUrl.value.trim() : "",
+    };
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    } catch {
+      setSettingsStatus("Could not save settings in this browser.", "err");
+      return;
+    }
+    settings = next;
+    updateModelLabel();
+    closeSettings();
+  }
+
+  function resetSettings() {
+    try {
+      localStorage.removeItem(SETTINGS_KEY);
+    } catch {}
+    settings = null;
+    updateModelLabel();
+    fillSettingsForm();
+    setSettingsStatus("Using the server default: Groq · openai/gpt-oss-120b.", "ok");
+  }
+
+  els.settingsBtn.addEventListener("click", openSettings);
+  els.cfgProvider.addEventListener("change", updateProviderFields);
+  els.cfgSave.addEventListener("click", saveSettings);
+  els.cfgReset.addEventListener("click", resetSettings);
+  els.cfgClose.addEventListener("click", closeSettings);
+  els.settingsModal.addEventListener("click", (event) => {
+    if (event.target === els.settingsModal) closeSettings();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.settingsModal.hidden) closeSettings();
+  });
 
   /* ---------- markdown ---------- */
 
@@ -419,6 +548,9 @@
     thread.updatedAt = Date.now();
     if (!thread.title) thread.title = content.length > 42 ? content.slice(0, 42) + "\u2026" : content;
     saveThreads();
+    els.input.value = "";
+    autosize();
+    updateSendBtn();
 
     const userDiv = document.createElement("div");
     userDiv.className = "turn-user";
@@ -448,10 +580,12 @@
 
     let aborted = false;
     try {
+      const request = { messages: history };
+      if (settings) request.config = { ...settings };
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify(request),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
@@ -599,6 +733,7 @@
   }
   renderSidebar();
   renderThread(getThread(currentId));
+  updateModelLabel();
   updateSendBtn();
   els.input.focus();
 })();

@@ -25,7 +25,10 @@
       <div class="threads" id="threadList" aria-label="Chat history"></div>
       <div class="sidebar-footer">
         <span class="model-dot"></span>
-        <span>gpt-oss-120b &middot; Groq</span>
+        <span id="modelLabel">gpt-oss-120b &middot; Groq</span>
+        <button class="gear-btn" id="settingsBtn" aria-label="Chat settings" title="API key & model">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z" stroke="currentColor" stroke-width="1.4"/><path d="M13.3 8c0-.4 0-.8-.1-1.1l1.3-1-.9-1.6-1.5.5c-.3-.3-.7-.5-1-.7L10.8 2H8.9l-.4 1.6c-.4.2-.7.4-1 .7l-1.5-.5-.9 1.6 1.3 1c-.1.3-.1.7-.1 1.1s0 .8.1 1.1l-1.3 1 .9 1.6 1.5-.5c.3.3.7.5 1 .7l.4 1.6h1.9l.4-1.6c.3-.2.7-.4 1-.7l1.5.5.9-1.6-1.3-1c.1-.3.1-.7.1-1.1Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        </button>
       </div>
     </aside>
 
@@ -53,6 +56,40 @@
         <div class="composer-hint">Enter to send &middot; Shift+Enter for a new line</div>
       </div>
     </main>
+  </div>
+
+  <div class="modal-overlay" id="settingsModal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <h2 id="settingsTitle">Chat settings</h2>
+      <p class="modal-sub">Plug in your own model API. Keys stay in this browser and are sent only to the local server.</p>
+      <label class="field">
+        <span>Provider</span>
+        <select id="cfgProvider">
+          <option value="groq">Groq</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="google_genai">Google Gemini</option>
+          <option value="openai">OpenAI-compatible (custom URL)</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Model</span>
+        <input id="cfgModel" type="text" placeholder="openai/gpt-oss-120b" autocomplete="off" spellcheck="false" />
+      </label>
+      <label class="field">
+        <span>API key</span>
+        <input id="cfgKey" type="password" placeholder="Paste your API key" autocomplete="off" />
+      </label>
+      <label class="field" id="cfgBaseUrlField" hidden>
+        <span>Base URL</span>
+        <input id="cfgBaseUrl" type="text" placeholder="https://api.groq.com/openai/v1" autocomplete="off" spellcheck="false" />
+      </label>
+      <div class="modal-status" id="cfgStatus"></div>
+      <div class="modal-actions">
+        <button class="pill-btn" id="cfgSave">Save</button>
+        <button class="pill-btn subtle" id="cfgReset">Use server default</button>
+        <button class="pill-btn subtle" id="cfgClose">Close</button>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>
