@@ -58,3 +58,6 @@ See [`docs/architecture.md`](docs/architecture.md) for the RAG workflow diagram 
 
 ## 📄 License
 MIT
+
+---
+**Maddela Anvesh** · 2nd Year B.Tech CSE · [LinkedIn](https://linkedin.com/in/19anveshh) · [Portfolio](https://19anveshh-portfolio.vercel.app/)
